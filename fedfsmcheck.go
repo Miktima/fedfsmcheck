@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"strings"
 
 	"golang.org/x/net/html"
@@ -74,13 +75,59 @@ func getList(body []byte, tag string) []string {
 					}
 				} else if tt == html.EndTagToken && depth >= 1 {
 					depth--
-					flist = append(flist, block) // Когда блок закрывается, добавляем текст из блока в список
+					flist = append(flist, strings.Trim(block, " \n")) // Когда блок закрывается, добавляем текст из блока в список
 					block = ""
 				}
 			}
 		}
 	}
 	return flist
+}
+
+func testEq(a, b []byte) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func mail(newlist []byte) {
+	addressList := []string{""}
+	subject := "Subject: New list in Federal Financial Monitoring Service\n"
+	address := "To: "
+	n_address := 0
+	for _, a := range addressList {
+		if n_address > 0 {
+			address += ", "
+		}
+		address += a
+		n_address += 1
+	}
+	address += "\n"
+	headers := []byte(subject + address + "Content-Type: text/html\nMIME-Version: 1.0\n\n")
+
+	msg := append(headers, newlist...)
+	sendmail := exec.Command("/usr/sbin/sendmail", "-t")
+	stdin, err := sendmail.StdinPipe()
+	if err != nil {
+		fmt.Println(err)
+	}
+	_, err = sendmail.StdoutPipe()
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	sendmail.Start()
+	stdin.Write([]byte(msg))
+	stdin.Close()
+	// sentBytes, _ := ioutil.ReadAll(stdout)
+	sendmail.Wait()
+
 }
 
 func main() {
@@ -93,40 +140,57 @@ func main() {
 
 	flag.Parse()
 
-	path, _ := os.Executable()
-	path = path[:strings.LastIndex(path, "/")+1]
-	fmt.Println("Path: ", path)
+	// path, _ := os.Executable()
+	// path = path[:strings.LastIndex(path, "/")+1]
+	// fmt.Println("Path: ", path)
+
+	var byteValue_ul []byte
+	var byteValue_fl []byte
 
 	// Читаем файлы со списками
-	if _, err := os.Stat(path + "/ul_file.txt"); err == nil {
+	if _, err := os.Stat("ul_file.txt"); err == nil {
 		// Open our jsonFile
-		// byteValue_ul, err := os.ReadFile(path + "/ul_file.txt")
-		_, err := os.ReadFile(path + "/ul_file.txt")
+		byteValue_ul, err = os.ReadFile("ul_file.txt")
 		// if we os.ReadFile returns an error then handle it
 		if err != nil {
 			fmt.Println(err)
 		}
 	}
 
-	if _, err := os.Stat(path + "/fl_file.txt"); err == nil {
+	if _, err := os.Stat("fl_file.txt"); err == nil {
 		// Open our jsonFile
-		_, err := os.ReadFile(path + "/fl_file.txt")
-		// byteValue_fl, err := os.ReadFile(path + "/fl_file.txt")
+		byteValue_fl, err = os.ReadFile("fl_file.txt")
 		// if we os.ReadFile returns an error then handle it
 		if err != nil {
 			fmt.Println(err)
 		}
 	}
-
-	// var ul_list []string
-	var fl_list []string
 
 	body, err := getHtmlPage(urlList, userAgent)
 	if err != nil {
 		fmt.Printf("Error getHtmlPage - %v\n", err)
 	}
-	// Получаем заголовок и текст статьи
-	fl_list = getList(body, "russianFL")
-	fmt.Println(fl_list)
+
+	// Получаем список
+	fl_list := getList(body, "russianFL")
+	ul_list := getList(body, "russianUL")
+	combined_string_fl := []byte(strings.Join(fl_list, ""))
+	combined_string_ul := []byte(strings.Join(ul_list, ""))
+	if !testEq(byteValue_fl, combined_string_fl) {
+		err := os.WriteFile("fl_file.txt", combined_string_fl, 0666)
+		if err != nil {
+			fmt.Println("Error : ", err)
+		}
+		// fmt.Println("FL=>", fl_list)
+		mail(combined_string_fl)
+	}
+	if !testEq(byteValue_ul, combined_string_ul) {
+		err := os.WriteFile("ul_file.txt", combined_string_ul, 0666)
+		if err != nil {
+			fmt.Println("Error : ", err)
+		}
+		// fmt.Println("UL=>", ul_list)
+		mail(combined_string_ul)
+	}
 
 }
