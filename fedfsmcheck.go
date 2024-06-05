@@ -52,7 +52,6 @@ func getList(body []byte, tag string) []string {
 	tkn := html.NewTokenizer(bytes.NewReader(body))
 	depth := 0
 	var flist []string
-	block := ""
 	errorCode := false
 
 	// Проходим по всему дереву тегов (пока не встретится html.ErrorToken)
@@ -63,7 +62,7 @@ func getList(body []byte, tag string) []string {
 			errorCode = true
 		case html.TextToken:
 			if depth > 0 {
-				block += string(tkn.Text()) // Если внутри нужного тега, забираем текст из блока
+				flist = append(flist, strings.Trim(string(tkn.Text()), " \n\t")) // Если внутри нужного тега, забираем текст из блока
 			}
 		case html.StartTagToken, html.EndTagToken:
 			tn, tAttr := tkn.TagName()
@@ -75,8 +74,6 @@ func getList(body []byte, tag string) []string {
 					}
 				} else if tt == html.EndTagToken && depth >= 1 {
 					depth--
-					flist = append(flist, strings.Trim(block, " \n")) // Когда блок закрывается, добавляем текст из блока в список
-					block = ""
 				}
 			}
 		}
@@ -96,9 +93,9 @@ func testEq(a, b []byte) bool {
 	return true
 }
 
-func mail(newlist []byte) {
+func mail(newlist []string, listName, urlList string) {
 	addressList := []string{""}
-	subject := "Subject: New list in Federal Financial Monitoring Service\n"
+	subject := "Subject: New list " + listName + " Federal Financial Monitoring Service\n"
 	address := "To: "
 	n_address := 0
 	for _, a := range addressList {
@@ -109,9 +106,23 @@ func mail(newlist []byte) {
 		n_address += 1
 	}
 	address += "\n"
-	headers := []byte(subject + address + "Content-Type: text/html\nMIME-Version: 1.0\n\n")
-
-	msg := append(headers, newlist...)
+	htmlhead := "<html>"
+	htmlhead += "<head><title>New list " + listName + " Federal Financial Monitoring Service</title>"
+	htmlhead += "<meta charset=\"utf-8\">"
+	htmlhead += "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+	htmlhead += "</head><body><h1>New list Federal Financial Monitoring Service</h1>"
+	if listName == "UL" {
+		htmlhead += "<h2>Организации</h2><br>"
+	}
+	if listName == "FL" {
+		htmlhead += "<h2>Физические лица</h2><br>"
+	}
+	htmlhead += "<a href=\"" + urlList + "\">Перечень террористов и экстремистов (включённые)</a><br><div><ul>"
+	headers := []byte(subject + address + "Content-Type: text/html\nMIME-Version: 1.0\n\n" + htmlhead)
+	htmlfooter := []byte("</ul></div></body></html>")
+	combined_string := []byte(strings.Join(newlist, "<br>"))
+	headers = append(headers, combined_string...)
+	msg := append(headers, htmlfooter...)
 	sendmail := exec.Command("/usr/sbin/sendmail", "-t")
 	stdin, err := sendmail.StdinPipe()
 	if err != nil {
@@ -169,28 +180,27 @@ func main() {
 	body, err := getHtmlPage(urlList, userAgent)
 	if err != nil {
 		fmt.Printf("Error getHtmlPage - %v\n", err)
-	}
-
-	// Получаем список
-	fl_list := getList(body, "russianFL")
-	ul_list := getList(body, "russianUL")
-	combined_string_fl := []byte(strings.Join(fl_list, ""))
-	combined_string_ul := []byte(strings.Join(ul_list, ""))
-	if !testEq(byteValue_fl, combined_string_fl) {
-		err := os.WriteFile("fl_file.txt", combined_string_fl, 0666)
-		if err != nil {
-			fmt.Println("Error : ", err)
+	} else {
+		// Получаем список
+		fl_list := getList(body, "russianFL")
+		ul_list := getList(body, "russianUL")
+		combined_string_fl := []byte(strings.Join(fl_list, ""))
+		combined_string_ul := []byte(strings.Join(ul_list, ""))
+		if !testEq(byteValue_fl, combined_string_fl) {
+			err := os.WriteFile("fl_file.txt", combined_string_fl, 0666)
+			if err != nil {
+				fmt.Println("Error : ", err)
+			}
+			// fmt.Println("FL=>", fl_list)
+			mail(fl_list, "FL", urlList)
 		}
-		// fmt.Println("FL=>", fl_list)
-		mail(combined_string_fl)
-	}
-	if !testEq(byteValue_ul, combined_string_ul) {
-		err := os.WriteFile("ul_file.txt", combined_string_ul, 0666)
-		if err != nil {
-			fmt.Println("Error : ", err)
+		if !testEq(byteValue_ul, combined_string_ul) {
+			err := os.WriteFile("ul_file.txt", combined_string_ul, 0666)
+			if err != nil {
+				fmt.Println("Error : ", err)
+			}
+			// fmt.Println("UL=>", ul_list)
+			mail(ul_list, "UL", urlList)
 		}
-		// fmt.Println("UL=>", ul_list)
-		mail(combined_string_ul)
 	}
-
 }
