@@ -13,15 +13,17 @@ import (
 	"golang.org/x/net/html"
 )
 
-func getHtmlPage(url, userAgent string) ([]byte, error) {
+func getHtmlPage(url, userAgent string) ([]byte, int, error) {
 	// функция получения ресурсов по указанному адресу url с использованием User-Agent
 	// возвращает загруженный HTML контент
 	client := &http.Client{}
+	var Scode int
+	Scode = 0
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		fmt.Printf("Cannot create new request  %s, error: %v\n", url, err)
-		return nil, err
+		return nil, Scode, err
 	}
 
 	// с User-agent по умолчанию контент не отдается, используем свой
@@ -31,18 +33,18 @@ func getHtmlPage(url, userAgent string) ([]byte, error) {
 	resp, err := client.Do(req)
 	if err != nil {
 		fmt.Printf("Error with GET request: %v\n", err)
-		return nil, err
+		return nil, Scode, err
 	}
-
+	Scode = resp.StatusCode
 	defer resp.Body.Close()
 
 	// Получаем контент и возвращаем его, как результат работы функции
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		fmt.Println("Error ReadAll")
-		return nil, err
+		return nil, Scode, err
 	}
-	return body, nil
+	return body, Scode, nil
 }
 
 func getList(body []byte, tag string) []string {
@@ -177,9 +179,10 @@ func main() {
 		}
 	}
 
-	body, err := getHtmlPage(urlList, userAgent)
-	if err != nil {
+	body, statuscode, err := getHtmlPage(urlList, userAgent)
+	if err != nil || statuscode != 200 {
 		fmt.Printf("Error getHtmlPage - %v\n", err)
+		fmt.Printf("Status Code - %d\n", statuscode)
 	} else {
 		// Получаем список
 		fl_list := getList(body, "russianFL")
