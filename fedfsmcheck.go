@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 
 	"golang.org/x/net/html"
@@ -95,7 +96,31 @@ func testEq(a, b []byte) bool {
 	return true
 }
 
-func mail(newlist []string, listName, urlList string) {
+func cmpLists(new, old []string) []string {
+	var result []string
+	lennew := len(new)
+	lenold := len(old)
+	for i := 0; i < lennew; i++ {
+		if i < lenold {
+			if new[i] == old[i] {
+				result = append(result, "<span style=\"text-decoration: none;\">"+new[i]+"</span>")
+			} else {
+				result = append(result, "<span style=\"text-decoration: none;\">"+new[i]+"</span>")
+				result = append(result, "<span style=\"text-decoration: line-through;\">"+old[i]+"</span>")
+			}
+		} else {
+			result = append(result, "<span style=\"text-decoration: none;\">"+new[i]+"</span>")
+		}
+	}
+	if lenold > lennew {
+		for k := lennew; k < lenold; k++ {
+			result = append(result, "<span style=\"text-decoration: line-through;\">"+old[k]+"</span>")
+		}
+	}
+	return result
+}
+
+func mail(newlist, savedlist []string, listName, urlList string) {
 	addressList := []string{""}
 	subject := "Subject: New list " + listName + " Federal Financial Monitoring Service\n"
 	address := "To: "
@@ -122,7 +147,8 @@ func mail(newlist []string, listName, urlList string) {
 	htmlhead += "<a href=\"" + urlList + "\">Перечень террористов и экстремистов (включённые)</a><br><div><ul>"
 	headers := []byte(subject + address + "Content-Type: text/html\nMIME-Version: 1.0\n\n" + htmlhead)
 	htmlfooter := []byte("</ul></div></body></html>")
-	combined_string := []byte(strings.Join(newlist, "<br>"))
+	twolist := cmpLists(newlist, savedlist)
+	combined_string := []byte(strings.Join(twolist, "<br>"))
 	headers = append(headers, combined_string...)
 	msg := append(headers, htmlfooter...)
 	sendmail := exec.Command("/usr/sbin/sendmail", "-t")
@@ -179,6 +205,8 @@ func main() {
 		}
 	}
 
+	re := regexp.MustCompile(`[0-9]+\.\s[\p{Cyrillic}\s,\d*\.\-\(\)]+;`)
+
 	body, statuscode, err := getHtmlPage(urlList, userAgent)
 	if err != nil || statuscode != 200 {
 		fmt.Printf("Error getHtmlPage - %v\n", err)
@@ -194,16 +222,26 @@ func main() {
 			if err != nil {
 				fmt.Println("Error : ", err)
 			}
+			var savedFLlist []string
+			savedFL := re.FindAll(byteValue_fl, -1)
+			for _, sline := range savedFL {
+				savedFLlist = append(savedFLlist, string(sline))
+			}
 			// fmt.Println("FL=>", fl_list)
-			mail(fl_list, "FL", urlList)
+			mail(fl_list, savedFLlist, "FL", urlList)
 		}
 		if !testEq(byteValue_ul, combined_string_ul) {
 			err := os.WriteFile("ul_file.txt", combined_string_ul, 0666)
 			if err != nil {
 				fmt.Println("Error : ", err)
 			}
+			var savedULlist []string
+			savedUL := re.FindAll(byteValue_ul, -1)
+			for _, sline := range savedUL {
+				savedULlist = append(savedULlist, string(sline))
+			}
 			// fmt.Println("UL=>", ul_list)
-			mail(ul_list, "UL", urlList)
+			mail(ul_list, savedULlist, "UL", urlList)
 		}
 	}
 }
