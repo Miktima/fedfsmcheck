@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"regexp"
 	"strings"
 
 	"golang.org/x/net/html"
@@ -96,31 +95,7 @@ func testEq(a, b []byte) bool {
 	return true
 }
 
-func cmpLists(new, old []string) []string {
-	var result []string
-	lennew := len(new)
-	lenold := len(old)
-	for i := 0; i < lennew; i++ {
-		if i < lenold {
-			if new[i] == old[i] {
-				result = append(result, "<span style=\"text-decoration: none;\">"+new[i]+"</span>")
-			} else {
-				result = append(result, "<span style=\"text-decoration: none;\">"+new[i]+"</span>")
-				result = append(result, "<span style=\"text-decoration: line-through;\">"+old[i]+"</span>")
-			}
-		} else {
-			result = append(result, "<span style=\"text-decoration: none;\">"+new[i]+"</span>")
-		}
-	}
-	if lenold > lennew {
-		for k := lennew; k < lenold; k++ {
-			result = append(result, "<span style=\"text-decoration: line-through;\">"+old[k]+"</span>")
-		}
-	}
-	return result
-}
-
-func mail(newlist, savedlist []string, listName, urlList string) {
+func mail(newlist []string, listName, urlList string) {
 	addressList := []string{""}
 	subject := "Subject: New list " + listName + " Federal Financial Monitoring Service\n"
 	address := "To: "
@@ -147,8 +122,7 @@ func mail(newlist, savedlist []string, listName, urlList string) {
 	htmlhead += "<a href=\"" + urlList + "\">Перечень террористов и экстремистов (включённые)</a><br><div><ul>"
 	headers := []byte(subject + address + "Content-Type: text/html\nMIME-Version: 1.0\n\n" + htmlhead)
 	htmlfooter := []byte("</ul></div></body></html>")
-	twolist := cmpLists(newlist, savedlist)
-	combined_string := []byte(strings.Join(twolist, "<br>"))
+	combined_string := []byte(strings.Join(newlist, "<br>"))
 	headers = append(headers, combined_string...)
 	msg := append(headers, htmlfooter...)
 	sendmail := exec.Command("/usr/sbin/sendmail", "-t")
@@ -187,25 +161,23 @@ func main() {
 	var byteValue_fl []byte
 
 	// Читаем файлы со списками
-	if _, err := os.Stat("ul_file.txt"); err == nil {
+	if _, err := os.Stat("fedfsmcheck/ul_file.txt"); err == nil {
 		// Open our jsonFile
-		byteValue_ul, err = os.ReadFile("ul_file.txt")
+		byteValue_ul, err = os.ReadFile("fedfsmcheck/ul_file.txt")
 		// if we os.ReadFile returns an error then handle it
 		if err != nil {
 			fmt.Println(err)
 		}
 	}
 
-	if _, err := os.Stat("fl_file.txt"); err == nil {
+	if _, err := os.Stat("fedfsmcheck/fl_file.txt"); err == nil {
 		// Open our jsonFile
-		byteValue_fl, err = os.ReadFile("fl_file.txt")
+		byteValue_fl, err = os.ReadFile("fedfsmcheck/fl_file.txt")
 		// if we os.ReadFile returns an error then handle it
 		if err != nil {
 			fmt.Println(err)
 		}
 	}
-
-	re := regexp.MustCompile(`[0-9]+\.\s[\p{Cyrillic}\s,\d*\.\-\(\)]+;`)
 
 	body, statuscode, err := getHtmlPage(urlList, userAgent)
 	if err != nil || statuscode != 200 {
@@ -218,30 +190,20 @@ func main() {
 		combined_string_fl := []byte(strings.Join(fl_list, ""))
 		combined_string_ul := []byte(strings.Join(ul_list, ""))
 		if !testEq(byteValue_fl, combined_string_fl) {
-			err := os.WriteFile("fl_file.txt", combined_string_fl, 0666)
+			err := os.WriteFile("fedfsmcheck/fl_file.txt", combined_string_fl, 0666)
 			if err != nil {
 				fmt.Println("Error : ", err)
-			}
-			var savedFLlist []string
-			savedFL := re.FindAll(byteValue_fl, -1)
-			for _, sline := range savedFL {
-				savedFLlist = append(savedFLlist, string(sline))
 			}
 			// fmt.Println("FL=>", fl_list)
-			mail(fl_list, savedFLlist, "FL", urlList)
+			mail(fl_list, "FL", urlList)
 		}
 		if !testEq(byteValue_ul, combined_string_ul) {
-			err := os.WriteFile("ul_file.txt", combined_string_ul, 0666)
+			err := os.WriteFile("fedfsmcheck/ul_file.txt", combined_string_ul, 0666)
 			if err != nil {
 				fmt.Println("Error : ", err)
 			}
-			var savedULlist []string
-			savedUL := re.FindAll(byteValue_ul, -1)
-			for _, sline := range savedUL {
-				savedULlist = append(savedULlist, string(sline))
-			}
 			// fmt.Println("UL=>", ul_list)
-			mail(ul_list, savedULlist, "UL", urlList)
+			mail(ul_list, "UL", urlList)
 		}
 	}
 }

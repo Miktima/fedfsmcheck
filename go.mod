@@ -1,4 +1,4 @@
-module textcollect
+module fedfsmcheck
 
 go 1.20
 
