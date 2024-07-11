@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 
 	"golang.org/x/net/html"
@@ -48,7 +49,7 @@ func getHtmlPage(url, userAgent string) ([]byte, int, error) {
 	return body, Scode, nil
 }
 
-func getList(body []byte, tag string) []string {
+func getListFsm(body []byte, tag string) []string {
 	// Функция получения списка из html контента
 	// Список достается из тега tag
 	// Возвращает список
@@ -65,7 +66,9 @@ func getList(body []byte, tag string) []string {
 			errorCode = true
 		case html.TextToken:
 			if depth > 0 {
-				flist = append(flist, strings.Trim(string(tkn.Text()), " \n\t")) // Если внутри нужного тега, забираем текст из блока
+				if len(strings.Trim(string(tkn.Text()), " \n\t")) > 0 { //Пустые строки не забираем
+					flist = append(flist, strings.Trim(string(tkn.Text()), " \n\t")) // Если внутри нужного тега, забираем текст из блока
+				}
 			}
 		case html.StartTagToken, html.EndTagToken:
 			tn, tAttr := tkn.TagName()
@@ -96,41 +99,15 @@ func testEq(a, b []byte) bool {
 	return true
 }
 
-func mail(newlist []string, listName, urlList string) {
-	path, _ := os.Executable()
-	path = path[:strings.LastIndex(path, "/")+1]
-
-	type Emaillist struct {
-		List   string
-		Emails []string
+func mail(newlist []string, listName, urlList string, addressList []string) {
+	var title string
+	var titleLink string
+	if strings.Contains(listName, "UL") {
+		title = "Юридические лица"
+	} else if strings.Contains(listName, "FL") {
+		title = "Физические лица"
 	}
-
-	var emaillist []Emaillist
-	// Читаем файл с адресами
-	if _, err := os.Stat(path + "/emails.json"); err == nil {
-		// Open our jsonFile
-		byteValue, err := os.ReadFile(path + "/emails.json")
-		// if we os.ReadFile returns an error then handle it
-		if err != nil {
-			fmt.Println(err)
-		}
-		// defer the closing of our jsonFile so that we can parse it later on
-		// var listHash []ArticleH
-		err = json.Unmarshal(byteValue, &emaillist)
-		if err != nil {
-			fmt.Println(err)
-		}
-	}
-	var addressList []string
-	for _, el := range emaillist {
-		if el.List == listName {
-			addressList = el.Emails
-			break
-		}
-	}
-	//addressList := []string{"m.timofeev@ria.ru", "d.kosarev@ria.ru", "y.likhodievski@ria.ru", "a.andreeva@ria.ru", "prav@rian.ru"}
-	// addressList := []string{"m.timofeev@ria.ru"}
-	subject := "Subject: New list " + listName + " Federal Financial Monitoring Service\n"
+	subject := "Subject: New list Federal Financial Monitoring Service: " + title + "\n"
 	address := "To: "
 	n_address := 0
 	for _, a := range addressList {
@@ -142,21 +119,25 @@ func mail(newlist []string, listName, urlList string) {
 	}
 	address += "\n"
 	htmlhead := "<html>"
-	htmlhead += "<head><title>New list " + listName + " Federal Financial Monitoring Service</title>"
+	htmlhead += "<head><title>New list Federal Financial Monitoring Service</title>"
 	htmlhead += "<meta charset=\"utf-8\">"
 	htmlhead += "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
-	htmlhead += "</head><body><h1>New list Federal Financial Monitoring Service</h1>"
-	if listName == "UL" {
-		htmlhead += "<h2>Организации</h2><br>"
+	if strings.Contains(listName, "add") {
+		title += " (включенные)"
+	} else if strings.Contains(listName, "FL") {
+		title += " (исключённые)"
 	}
-	if listName == "FL" {
-		htmlhead += "<h2>Физические лица</h2><br>"
+	htmlhead += "</head><body><h1>" + title + "</h1>"
+	if strings.Contains(listName, "add") {
+		titleLink = "Перечень террористов и экстремистов (включённые)"
+	} else if strings.Contains(listName, "del") {
+		titleLink = "Перечень террористов и экстремистов (исключённые)"
 	}
-	htmlhead += "<a href=\"" + urlList + "\">Перечень террористов и экстремистов (включённые)</a><br><div><ul>"
+
+	htmlhead += "<a href=\"" + urlList + "\">" + titleLink + "</a><br><br><br><div><ul>"
 	headers := []byte(subject + address + "Content-Type: text/html\nMIME-Version: 1.0\n\n" + htmlhead)
 	htmlfooter := []byte("</ul></div></body></html>")
 	combined_string := []byte(strings.Join(newlist, "<br>"))
-	fmt.Println(strings.Join(newlist, "<br>"))
 	headers = append(headers, combined_string...)
 	msg := append(headers, htmlfooter...)
 	sendmail := exec.Command("/usr/sbin/sendmail", "-t")
@@ -178,69 +159,74 @@ func mail(newlist []string, listName, urlList string) {
 }
 
 func main() {
-	var urlList string
 	var userAgent string
 
 	// Ключи для командной строки
-	flag.StringVar(&urlList, "url", "https://fedsfm.ru/documents/terrorists-catalog-portal-add", "The URL to lists")
 	flag.StringVar(&userAgent, "uagent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit", "User Agent")
 
 	flag.Parse()
 
-	// path, _ := os.Executable()
-	// path = path[:strings.LastIndex(path, "/")+1]
-	// fmt.Println("Path: ", path)
-
-	var byteValue_ul []byte
-	var byteValue_fl []byte
-
 	path, _ := os.Executable()
 	path = path[:strings.LastIndex(path, "/")+1]
 
-	// Читаем файлы со списками
-	if _, err := os.Stat(path + "/ul_file.txt"); err == nil {
+	var byteValue_list []byte
+
+	type Configlist struct {
+		List   string
+		Emails []string
+		Url    string
+	}
+
+	var configlist []Configlist
+	// Читаем файл с адресами
+	if _, err := os.Stat(path + "/emails.json"); err == nil {
 		// Open our jsonFile
-		byteValue_ul, err = os.ReadFile(path + "/ul_file.txt")
+		byteValue, err := os.ReadFile(path + "/emails.json")
 		// if we os.ReadFile returns an error then handle it
+		if err != nil {
+			fmt.Println(err)
+		}
+		// defer the closing of our jsonFile so that we can parse it later on
+		// var listHash []ArticleH
+		err = json.Unmarshal(byteValue, &configlist)
 		if err != nil {
 			fmt.Println(err)
 		}
 	}
 
-	if _, err := os.Stat(path + "/fl_file.txt"); err == nil {
-		// Open our jsonFile
-		byteValue_fl, err = os.ReadFile(path + "/fl_file.txt")
-		// if we os.ReadFile returns an error then handle it
-		if err != nil {
-			fmt.Println(err)
+	// Читаем файлы со списками. Файлы в порядке, указанном в конфигурационном файле
+	for key, el := range configlist {
+		keystr := strconv.Itoa(key)
+		if _, err := os.Stat(path + "/file_" + keystr + ".txt"); err == nil {
+			// Open our jsonFile
+			byteValue_list, err = os.ReadFile(path + "/file_" + keystr + ".txt")
+			// if we os.ReadFile returns an error then handle it
+			if err != nil {
+				fmt.Println(err)
+			}
 		}
-	}
 
-	body, statuscode, err := getHtmlPage(urlList, userAgent)
-	if err != nil || statuscode != 200 {
-		fmt.Printf("Error getHtmlPage - %v\n", err)
-		fmt.Printf("Status Code - %d\n", statuscode)
-	} else {
-		// Получаем список
-		fl_list := getList(body, "russianFL")
-		ul_list := getList(body, "russianUL")
-		combined_string_fl := []byte(strings.Join(fl_list, ""))
-		combined_string_ul := []byte(strings.Join(ul_list, ""))
-		if !testEq(byteValue_fl, combined_string_fl) {
-			err := os.WriteFile(path+"/fl_file.txt", combined_string_fl, 0666)
-			if err != nil {
-				fmt.Println("Error : ", err)
+		body, statuscode, err := getHtmlPage(el.Url, userAgent)
+		if err != nil || statuscode != 200 {
+			fmt.Printf("Error getHtmlPage - %v\n", err)
+			fmt.Printf("Status Code - %d\n", statuscode)
+		} else {
+			// Получаем список
+			var get_list []string
+			if el.List == "ULadd" || el.List == "ULdel" {
+				get_list = getListFsm(body, "russianUL")
+			} else if el.List == "FLadd" || el.List == "FLdel" {
+				get_list = getListFsm(body, "russianFL")
 			}
-			// fmt.Println("FL=>", fl_list)
-			mail(fl_list, "FL", urlList)
-		}
-		if !testEq(byteValue_ul, combined_string_ul) {
-			err := os.WriteFile(path+"/ul_file.txt", combined_string_ul, 0666)
-			if err != nil {
-				fmt.Println("Error : ", err)
+			combined_string := []byte(strings.Join(get_list, ""))
+			if !testEq(byteValue_list, combined_string) {
+				err := os.WriteFile(path+"/file_"+keystr+".txt", combined_string, 0666)
+				if err != nil {
+					fmt.Println("Error : ", err)
+				}
+				// fmt.Println("FL=>", get_list)
+				mail(get_list, el.List, el.Url, el.Emails)
 			}
-			// fmt.Println("UL=>", ul_list)
-			mail(ul_list, "UL", urlList)
 		}
 	}
 }
