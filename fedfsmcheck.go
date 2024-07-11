@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -96,7 +97,39 @@ func testEq(a, b []byte) bool {
 }
 
 func mail(newlist []string, listName, urlList string) {
-	addressList := []string{""}
+	path, _ := os.Executable()
+	path = path[:strings.LastIndex(path, "/")+1]
+
+	type Emaillist struct {
+		List   string
+		Emails []string
+	}
+
+	var emaillist []Emaillist
+	// Читаем файл с адресами
+	if _, err := os.Stat(path + "/emails.json"); err == nil {
+		// Open our jsonFile
+		byteValue, err := os.ReadFile(path + "/emails.json")
+		// if we os.ReadFile returns an error then handle it
+		if err != nil {
+			fmt.Println(err)
+		}
+		// defer the closing of our jsonFile so that we can parse it later on
+		// var listHash []ArticleH
+		err = json.Unmarshal(byteValue, &emaillist)
+		if err != nil {
+			fmt.Println(err)
+		}
+	}
+	var addressList []string
+	for _, el := range emaillist {
+		if el.List == listName {
+			addressList = el.Emails
+			break
+		}
+	}
+	//addressList := []string{"m.timofeev@ria.ru", "d.kosarev@ria.ru", "y.likhodievski@ria.ru", "a.andreeva@ria.ru", "prav@rian.ru"}
+	// addressList := []string{"m.timofeev@ria.ru"}
 	subject := "Subject: New list " + listName + " Federal Financial Monitoring Service\n"
 	address := "To: "
 	n_address := 0
@@ -123,6 +156,7 @@ func mail(newlist []string, listName, urlList string) {
 	headers := []byte(subject + address + "Content-Type: text/html\nMIME-Version: 1.0\n\n" + htmlhead)
 	htmlfooter := []byte("</ul></div></body></html>")
 	combined_string := []byte(strings.Join(newlist, "<br>"))
+	fmt.Println(strings.Join(newlist, "<br>"))
 	headers = append(headers, combined_string...)
 	msg := append(headers, htmlfooter...)
 	sendmail := exec.Command("/usr/sbin/sendmail", "-t")
@@ -160,19 +194,22 @@ func main() {
 	var byteValue_ul []byte
 	var byteValue_fl []byte
 
+	path, _ := os.Executable()
+	path = path[:strings.LastIndex(path, "/")+1]
+
 	// Читаем файлы со списками
-	if _, err := os.Stat("fedfsmcheck/ul_file.txt"); err == nil {
+	if _, err := os.Stat(path + "/ul_file.txt"); err == nil {
 		// Open our jsonFile
-		byteValue_ul, err = os.ReadFile("fedfsmcheck/ul_file.txt")
+		byteValue_ul, err = os.ReadFile(path + "/ul_file.txt")
 		// if we os.ReadFile returns an error then handle it
 		if err != nil {
 			fmt.Println(err)
 		}
 	}
 
-	if _, err := os.Stat("fedfsmcheck/fl_file.txt"); err == nil {
+	if _, err := os.Stat(path + "/fl_file.txt"); err == nil {
 		// Open our jsonFile
-		byteValue_fl, err = os.ReadFile("fedfsmcheck/fl_file.txt")
+		byteValue_fl, err = os.ReadFile(path + "/fl_file.txt")
 		// if we os.ReadFile returns an error then handle it
 		if err != nil {
 			fmt.Println(err)
@@ -190,7 +227,7 @@ func main() {
 		combined_string_fl := []byte(strings.Join(fl_list, ""))
 		combined_string_ul := []byte(strings.Join(ul_list, ""))
 		if !testEq(byteValue_fl, combined_string_fl) {
-			err := os.WriteFile("fedfsmcheck/fl_file.txt", combined_string_fl, 0666)
+			err := os.WriteFile(path+"/fl_file.txt", combined_string_fl, 0666)
 			if err != nil {
 				fmt.Println("Error : ", err)
 			}
@@ -198,7 +235,7 @@ func main() {
 			mail(fl_list, "FL", urlList)
 		}
 		if !testEq(byteValue_ul, combined_string_ul) {
-			err := os.WriteFile("fedfsmcheck/ul_file.txt", combined_string_ul, 0666)
+			err := os.WriteFile(path+"/ul_file.txt", combined_string_ul, 0666)
 			if err != nil {
 				fmt.Println("Error : ", err)
 			}
