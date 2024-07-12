@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -21,6 +23,8 @@ func getHtmlPage(url, userAgent string) ([]byte, int, error) {
 	client := &http.Client{}
 	var Scode int
 	Scode = 0
+
+	http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -57,6 +61,7 @@ func getListFsm(body []byte, tag string) []string {
 	depth := 0
 	var flist []string
 	errorCode := false
+	var trimedstr string
 
 	// Проходим по всему дереву тегов (пока не встретится html.ErrorToken)
 	for !errorCode {
@@ -66,8 +71,9 @@ func getListFsm(body []byte, tag string) []string {
 			errorCode = true
 		case html.TextToken:
 			if depth > 0 {
-				if len(strings.Trim(string(tkn.Text()), " \n\t")) > 0 { //Пустые строки не забираем
-					flist = append(flist, strings.Trim(string(tkn.Text()), " \n\t")) // Если внутри нужного тега, забираем текст из блока
+				trimedstr = strings.Trim(string(tkn.Text()), " \n\t")
+				if len(trimedstr) > 0 { //Пустые строки не забираем
+					flist = append(flist, trimedstr) // Если внутри нужного тега, забираем текст из блока
 				}
 			}
 		case html.StartTagToken, html.EndTagToken:
@@ -80,6 +86,104 @@ func getListFsm(body []byte, tag string) []string {
 					}
 				} else if tt == html.EndTagToken && depth >= 1 {
 					depth--
+				}
+			}
+		}
+	}
+	return flist
+}
+
+func getListMinjust(body []byte) []string {
+	// Функция получения списка из html контента
+	// Список достается из тега tag
+	// Возвращает список
+	tkn := html.NewTokenizer(bytes.NewReader(body))
+	depth := 0
+	var flist []string
+	errorCode := false
+	var trimedstr string
+	acctext := ""
+	validNum := regexp.MustCompile(`^[ ]*[0-9]+.+`)
+
+	// Проходим по всему дереву тегов (пока не встретится html.ErrorToken)
+	for !errorCode {
+		tt := tkn.Next()
+		switch tt {
+		case html.ErrorToken:
+			errorCode = true
+		case html.TextToken:
+			if depth > 0 {
+				trimedstr = strings.Trim(string(tkn.Text()), " \n\t")
+				if len(trimedstr) > 0 { //Пустые строки не забираем
+					acctext += trimedstr + " " // Если внутри нужного тега, забираем текст из блока
+				}
+			}
+		case html.StartTagToken, html.EndTagToken:
+			tn, _ := tkn.TagName()
+			if string(tn) == "tr" { // выбираем нужный tag
+				if tt == html.StartTagToken {
+					depth++ // нужный тег открывается
+				} else if tt == html.EndTagToken && depth >= 1 {
+					if validNum.MatchString(acctext) { // Строка должна начинаться с числа
+						flist = append(flist, acctext) // При закрытии тега добавляем в список
+					}
+					acctext = ""
+					depth--
+				}
+			}
+		}
+	}
+	return flist
+}
+
+func getListSpimex(body []byte) []string {
+	// Функция получения списка из html контента
+	// Список достается из тега tag
+	// Возвращает список
+	tkn := html.NewTokenizer(bytes.NewReader(body))
+	depth := 0
+	othertag := 0
+	var flist []string
+	errorCode := false
+	var trimedstr string
+	acctext := ""
+
+	// Проходим по всему дереву тегов (пока не встретится html.ErrorToken)
+	for !errorCode {
+		tt := tkn.Next()
+		switch tt {
+		case html.ErrorToken:
+			errorCode = true
+		case html.TextToken:
+			if depth > 0 {
+				trimedstr = strings.Trim(string(tkn.Text()), " \n\t")
+				if len(trimedstr) > 0 { //Пустые строки не забираем
+					acctext += trimedstr + " " // Если внутри нужного тега, забираем текст из блока
+				}
+			}
+		case html.StartTagToken, html.EndTagToken:
+			tn, tAttr := tkn.TagName()
+			if string(tn) == "div" { // выбираем нужный tag
+				// fmt.Println("depth:", depth, "     othertag:", othertag)
+				if tAttr {
+					key, attr, _ := tkn.TagAttr()
+					if tt == html.StartTagToken {
+						// fmt.Println("key:", string(key), "     attr:", string(attr))
+						if depth == 1 {
+							othertag++ // считаем другие такие же теги внутри нужного
+						}
+						if string(key) == "class" && string(attr) == "news-item" {
+							depth++ // нужный тег открывается
+						}
+					}
+				} else if tt == html.EndTagToken && depth == 1 {
+					if othertag == 0 {
+						flist = append(flist, acctext) // При закрытии тега добавляем в список
+						acctext = ""
+						depth--
+					} else {
+						othertag--
+					}
 				}
 			}
 		}
@@ -102,12 +206,19 @@ func testEq(a, b []byte) bool {
 func mail(newlist []string, listName, urlList string, addressList []string) {
 	var title string
 	var titleLink string
+	var subject string
 	if strings.Contains(listName, "UL") {
 		title = "Юридические лица"
 	} else if strings.Contains(listName, "FL") {
 		title = "Физические лица"
 	}
-	subject := "Subject: New list Federal Financial Monitoring Service: " + title + "\n"
+	if strings.Contains(listName, "UL") || strings.Contains(listName, "FL") {
+		subject = "Subject: New list Federal Financial Monitoring Service: " + title + "\n"
+	} else if listName == "Minjust" {
+		subject = "Subject: New list Minjust: нежелательные организации\n"
+	} else if listName == "Spimex" {
+		subject = "Subject: Биржевая информация: статистические материалы\n"
+	}
 	address := "To: "
 	n_address := 0
 	for _, a := range addressList {
@@ -119,21 +230,35 @@ func mail(newlist []string, listName, urlList string, addressList []string) {
 	}
 	address += "\n"
 	htmlhead := "<html>"
-	htmlhead += "<head><title>New list Federal Financial Monitoring Service</title>"
+	if strings.Contains(listName, "UL") || strings.Contains(listName, "FL") {
+		htmlhead += "<head><title>New list Federal Financial Monitoring Service</title>"
+	} else if listName == "Minjust" {
+		htmlhead += "<head><title>New list Minjust: нежелательные организации</title>"
+	} else if listName == "Spimex" {
+		htmlhead += "<head><title>Биржевая информация: статистические материалы</title>"
+	}
 	htmlhead += "<meta charset=\"utf-8\">"
 	htmlhead += "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
 	if strings.Contains(listName, "add") {
 		title += " (включенные)"
+		htmlhead += "</head><body><h1>" + title + "</h1>"
 	} else if strings.Contains(listName, "FL") {
 		title += " (исключённые)"
+		htmlhead += "</head><body><h1>" + title + "</h1>"
+	} else if listName == "Minjust" {
+		htmlhead += "</head><body><h1>Перечень иностранных и международных неправительственных организаций, деятельность которых признана нежелательной на территории Российской Федерации</h1>"
+	} else if listName == "Spimex" {
+		htmlhead += "</head><body><h1>Статистические материалы</h1>"
 	}
-	htmlhead += "</head><body><h1>" + title + "</h1>"
 	if strings.Contains(listName, "add") {
 		titleLink = "Перечень террористов и экстремистов (включённые)"
 	} else if strings.Contains(listName, "del") {
 		titleLink = "Перечень террористов и экстремистов (исключённые)"
+	} else if listName == "Minjust" {
+		titleLink = "Перечень нежелательных организаций"
+	} else if listName == "Spimex" {
+		titleLink = "Биржевая информация: статистические материалы"
 	}
-
 	htmlhead += "<a href=\"" + urlList + "\">" + titleLink + "</a><br><br><br><div><ul>"
 	headers := []byte(subject + address + "Content-Type: text/html\nMIME-Version: 1.0\n\n" + htmlhead)
 	htmlfooter := []byte("</ul></div></body></html>")
@@ -217,6 +342,10 @@ func main() {
 				get_list = getListFsm(body, "russianUL")
 			} else if el.List == "FLadd" || el.List == "FLdel" {
 				get_list = getListFsm(body, "russianFL")
+			} else if el.List == "Minjust" {
+				get_list = getListMinjust(body)
+			} else if el.List == "Spimex" {
+				get_list = getListSpimex(body)
 			}
 			combined_string := []byte(strings.Join(get_list, ""))
 			if !testEq(byteValue_list, combined_string) {
