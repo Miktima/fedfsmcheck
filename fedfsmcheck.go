@@ -277,7 +277,7 @@ func getListEaeunion(body []byte) []string {
 				if tAttr {
 					key, attr, _ := tkn.TagAttr()
 					if tt == html.StartTagToken {
-						if string(key) == "data-name" && string(attr) == "panel" {
+						if string(key) == "data-control" && string(attr) == "app/eec.npb.discussionsAndRIA.panel" {
 							inpanel = 1
 						}
 					}
@@ -300,6 +300,62 @@ func getListEaeunion(body []byte) []string {
 			if string(tn) == "table" {
 				if tt == html.EndTagToken && inpanel == 1 {
 					inpanel = 0
+				}
+			}
+		}
+	}
+	return flist
+}
+
+func getListMintrans(body []byte) []string {
+	// Функция получения списка из html контента
+	// Список достается из тега tag
+	// Возвращает список
+	tkn := html.NewTokenizer(bytes.NewReader(body))
+	depth := 0
+	othertag := 0
+	var flist []string
+	errorCode := false
+	var trimedstr string
+	acctext := ""
+
+	// Проходим по всему дереву тегов (пока не встретится html.ErrorToken)
+	for !errorCode {
+		tt := tkn.Next()
+		switch tt {
+		case html.ErrorToken:
+			errorCode = true
+		case html.TextToken:
+			if depth > 0 {
+				trimedstr = strings.Trim(string(tkn.Text()), " \n\t")
+				if len(trimedstr) > 0 { //Пустые строки не забираем
+					acctext += trimedstr + " " // Если внутри нужного тега, забираем текст из блока
+				}
+			}
+		case html.StartTagToken, html.EndTagToken:
+			tn, tAttr := tkn.TagName()
+			if string(tn) == "div" { // выбираем нужный tag
+				// fmt.Println("depth:", depth, "     othertag:", othertag)
+				if tAttr {
+					key, attr, _ := tkn.TagAttr()
+					if tt == html.StartTagToken {
+						// fmt.Println("key:", string(key), "     attr:", string(attr))
+						if depth == 1 {
+							othertag++ // считаем другие такие же теги внутри нужного
+						}
+						if string(key) == "class" && string(attr) == "news-list-item" {
+							depth++ // нужный тег открывается
+						}
+					}
+				} else if tt == html.EndTagToken && depth == 1 {
+					if othertag == 0 {
+						acctext += "[PAD]"
+						flist = append(flist, acctext) // При закрытии тега добавляем в список
+						acctext = ""
+						depth--
+					} else {
+						othertag--
+					}
 				}
 			}
 		}
@@ -370,6 +426,8 @@ func mail(newlist []string, listName, urlList string, addressList []string) {
 		subject = "Subject: АКРА рейтинг\n"
 	} else if listName == "Eaeunion" {
 		subject = "Subject: Евразийский экономический союз\n"
+	} else if listName == "Mintrans" {
+		subject = "Subject: Министерство транспорта Российской Федерации\n"
 	}
 	address := "To: "
 	n_address := 0
@@ -392,6 +450,8 @@ func mail(newlist []string, listName, urlList string, addressList []string) {
 		htmlhead += "<head><title>АКРА рейтинг: пресс-релизы</title>"
 	} else if listName == "Eaeunion" {
 		htmlhead += "<head><title>Евразийский экономический союз: правовой портал</title>"
+	} else if listName == "Mintrans" {
+		htmlhead += "<head><title>Министерство транспорта Российской Федерации</title>"
 	}
 	htmlhead += "<meta charset=\"utf-8\">"
 	htmlhead += "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
@@ -409,6 +469,8 @@ func mail(newlist []string, listName, urlList string, addressList []string) {
 		htmlhead += "</head><body><h1>АКРА рейтинг: пресс-релизы</h1>"
 	} else if listName == "Eaeunion" {
 		htmlhead += "</head><body><h1>Евразийский экономический союз: правовой портал</h1>"
+	} else if listName == "Mintrans" {
+		htmlhead += "</head><body><h1>Министерство транспорта Российской Федерации: новости</h1>"
 	}
 	if strings.Contains(listName, "add") {
 		titleLink = "Перечень террористов и экстремистов (включённые)"
@@ -422,6 +484,8 @@ func mail(newlist []string, listName, urlList string, addressList []string) {
 		titleLink = "Пресс-релизы"
 	} else if listName == "Eaeunion" {
 		titleLink = "Документы"
+	} else if listName == "Mintrans" {
+		titleLink = "Новости"
 	}
 	htmlhead += "<a href=\"" + urlList + "\">" + titleLink + "</a><br><br><br><div><ul>"
 	headers := []byte(subject + address + "Content-Type: text/html\nMIME-Version: 1.0\n\n" + htmlhead)
@@ -486,6 +550,7 @@ func main() {
 	// Читаем файлы со списками. Файлы в порядке, указанном в конфигурационном файле
 	for key, el := range configlist {
 		keystr := strconv.Itoa(key)
+		byteValue_list = []byte{}
 		if _, err := os.Stat(path + "/file_" + keystr + ".txt"); err == nil {
 			// Open our jsonFile
 			byteValue_list, err = os.ReadFile(path + "/file_" + keystr + ".txt")
@@ -514,6 +579,8 @@ func main() {
 				get_list = getListAcra(body)
 			} else if el.List == "Eaeunion" {
 				get_list = getListEaeunion(body)
+			} else if el.List == "Mintrans" {
+				get_list = getListMintrans(body)
 			}
 			combined_string := []byte(strings.Join(get_list, ""))
 			if !testEq(byteValue_list, combined_string) {
@@ -550,6 +617,19 @@ func main() {
 						new_list := newList(get_list, byteValue_list, `.*?[PAD]`, "desc")
 						mail(new_list, el.List, el.Url, el.Emails)
 					} else {
+						mail(get_list, el.List, el.Url, el.Emails)
+					}
+				} else if el.List == "Mintrans" {
+					if len(byteValue_list) > 0 {
+						new_list := newList(get_list, byteValue_list, `.*?[PAD]`, "desc")
+						for i := 0; i < len(new_list); i++ {
+							new_list[i] = strings.ReplaceAll(new_list[i], "[PAD]", "")
+						}
+						mail(new_list, el.List, el.Url, el.Emails)
+					} else {
+						for i := 0; i < len(get_list); i++ {
+							get_list[i] = strings.ReplaceAll(get_list[i], "[PAD]", "")
+						}
 						mail(get_list, el.List, el.Url, el.Emails)
 					}
 				}
