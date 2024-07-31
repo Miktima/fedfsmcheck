@@ -246,67 +246,6 @@ func getListAcra(body []byte) []string {
 	return flist
 }
 
-func getListEaeunion(body []byte) []string {
-	// Функция получения списка из html контента
-	// Список достается из тега tag
-	// Возвращает список
-	tkn := html.NewTokenizer(bytes.NewReader(body))
-	depth := 0
-	inpanel := 0
-	var flist []string
-	errorCode := false
-	var trimedstr string
-	acctext := ""
-
-	// Проходим по всему дереву тегов (пока не встретится html.ErrorToken)
-	for !errorCode {
-		tt := tkn.Next()
-		switch tt {
-		case html.ErrorToken:
-			errorCode = true
-		case html.TextToken:
-			if depth > 0 {
-				trimedstr = strings.Trim(string(tkn.Text()), " \n\t")
-				if len(trimedstr) > 0 { //Пустые строки не забираем
-					acctext += trimedstr + " " // Если внутри нужного тега, забираем текст из блока
-				}
-			}
-		case html.StartTagToken, html.EndTagToken:
-			tn, tAttr := tkn.TagName()
-			if string(tn) == "div" { // выбираем tag, в котором находится таблица
-				if tAttr {
-					key, attr, _ := tkn.TagAttr()
-					if tt == html.StartTagToken {
-						if string(key) == "data-control" && string(attr) == "app/eec.npb.discussionsAndRIA.panel" {
-							inpanel = 1
-						}
-					}
-				}
-			}
-			// в одну строчку забираем сведения из двух последовательных <tr>
-			if string(tn) == "tr" && inpanel == 1 { // выбираем нужный tag
-				if tt == html.StartTagToken {
-					depth++ // открывается нужный первый тег
-				} else if tt == html.EndTagToken && depth >= 1 {
-					if depth == 2 {
-						acctext += "[PAD]"
-						flist = append(flist, acctext) // При закрытии тега добавляем в список
-						acctext = ""
-						depth = 0
-					}
-				}
-			}
-			// Если таблица закрылась, то убираем признак для копирования текста
-			if string(tn) == "table" {
-				if tt == html.EndTagToken && inpanel == 1 {
-					inpanel = 0
-				}
-			}
-		}
-	}
-	return flist
-}
-
 func getListMintrans(body []byte) []string {
 	// Функция получения списка из html контента
 	// Список достается из тега tag
@@ -424,8 +363,6 @@ func mail(newlist []string, listName, urlList string, addressList []string) {
 		subject = "Subject: Биржевая информация: статистические материалы\n"
 	} else if listName == "Acra" {
 		subject = "Subject: АКРА рейтинг\n"
-	} else if listName == "Eaeunion" {
-		subject = "Subject: Евразийский экономический союз\n"
 	} else if listName == "Mintrans" {
 		subject = "Subject: Министерство транспорта Российской Федерации\n"
 	}
@@ -448,8 +385,6 @@ func mail(newlist []string, listName, urlList string, addressList []string) {
 		htmlhead += "<head><title>Биржевая информация: статистические материалы</title>"
 	} else if listName == "Acra" {
 		htmlhead += "<head><title>АКРА рейтинг: пресс-релизы</title>"
-	} else if listName == "Eaeunion" {
-		htmlhead += "<head><title>Евразийский экономический союз: правовой портал</title>"
 	} else if listName == "Mintrans" {
 		htmlhead += "<head><title>Министерство транспорта Российской Федерации</title>"
 	}
@@ -467,8 +402,6 @@ func mail(newlist []string, listName, urlList string, addressList []string) {
 		htmlhead += "</head><body><h1>Статистические материалы</h1>"
 	} else if listName == "Acra" {
 		htmlhead += "</head><body><h1>АКРА рейтинг: пресс-релизы</h1>"
-	} else if listName == "Eaeunion" {
-		htmlhead += "</head><body><h1>Евразийский экономический союз: правовой портал</h1>"
 	} else if listName == "Mintrans" {
 		htmlhead += "</head><body><h1>Министерство транспорта Российской Федерации: новости</h1>"
 	}
@@ -482,8 +415,6 @@ func mail(newlist []string, listName, urlList string, addressList []string) {
 		titleLink = "Биржевая информация: статистические материалы"
 	} else if listName == "Acra" {
 		titleLink = "Пресс-релизы"
-	} else if listName == "Eaeunion" {
-		titleLink = "Документы"
 	} else if listName == "Mintrans" {
 		titleLink = "Новости"
 	}
@@ -577,8 +508,6 @@ func main() {
 				get_list = getListSpimex(body)
 			} else if el.List == "Acra" {
 				get_list = getListAcra(body)
-			} else if el.List == "Eaeunion" {
-				get_list = getListEaeunion(body)
 			} else if el.List == "Mintrans" {
 				get_list = getListMintrans(body)
 			}
@@ -608,13 +537,6 @@ func main() {
 				} else if el.List == "Acra" {
 					if len(byteValue_list) > 0 {
 						new_list := newList(get_list, byteValue_list, `.*?\d{2} \p{Cyrillic}{3} \d{4}`, "desc")
-						mail(new_list, el.List, el.Url, el.Emails)
-					} else {
-						mail(get_list, el.List, el.Url, el.Emails)
-					}
-				} else if el.List == "Eaeunion" {
-					if len(byteValue_list) > 0 {
-						new_list := newList(get_list, byteValue_list, `.*?[PAD]`, "desc")
 						mail(new_list, el.List, el.Url, el.Emails)
 					} else {
 						mail(get_list, el.List, el.Url, el.Emails)
