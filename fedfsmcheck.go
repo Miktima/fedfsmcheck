@@ -523,23 +523,35 @@ func main() {
 				} else if el.List == "Minjust" {
 					if len(byteValue_list) > 0 {
 						new_list := newList(get_list, byteValue_list, `[0-9]+ № [\d]+-[[\p{Cyrillic} ]+[\d.]+`, "asc")
-						mail(new_list, el.List, el.Url, el.Emails)
+						if len(new_list) > 0 {
+							mail(new_list, el.List, el.Url, el.Emails)
+						}
 					} else {
-						mail(get_list, el.List, el.Url, el.Emails)
+						if len(get_list) > 0 {
+							mail(get_list, el.List, el.Url, el.Emails)
+						}
 					}
 				} else if el.List == "Spimex" {
 					if len(byteValue_list) > 0 {
 						new_list := newList(get_list, byteValue_list, `^[0-9]{2} \p{Cyrillic}{3} .{1} [0-9]{2}`, "desc")
-						mail(new_list, el.List, el.Url, el.Emails)
+						if len(new_list) > 0 {
+							mail(new_list, el.List, el.Url, el.Emails)
+						}
 					} else {
-						mail(get_list, el.List, el.Url, el.Emails)
+						if len(get_list) > 0 {
+							mail(get_list, el.List, el.Url, el.Emails)
+						}
 					}
 				} else if el.List == "Acra" {
 					if len(byteValue_list) > 0 {
 						new_list := newList(get_list, byteValue_list, `.*?\d{2} \p{Cyrillic}{3} \d{4}`, "desc")
-						mail(new_list, el.List, el.Url, el.Emails)
+						if len(new_list) > 0 {
+							mail(new_list, el.List, el.Url, el.Emails)
+						}
 					} else {
-						mail(get_list, el.List, el.Url, el.Emails)
+						if len(get_list) > 0 {
+							mail(get_list, el.List, el.Url, el.Emails)
+						}
 					}
 				} else if el.List == "Mintrans" {
 					if len(byteValue_list) > 0 {
@@ -547,12 +559,16 @@ func main() {
 						for i := 0; i < len(new_list); i++ {
 							new_list[i] = strings.ReplaceAll(new_list[i], "[PAD]", "")
 						}
-						mail(new_list, el.List, el.Url, el.Emails)
+						if len(new_list) > 0 {
+							mail(new_list, el.List, el.Url, el.Emails)
+						}
 					} else {
 						for i := 0; i < len(get_list); i++ {
 							get_list[i] = strings.ReplaceAll(get_list[i], "[PAD]", "")
 						}
-						mail(get_list, el.List, el.Url, el.Emails)
+						if len(get_list) > 0 {
+							mail(get_list, el.List, el.Url, el.Emails)
+						}
 					}
 				}
 			}
