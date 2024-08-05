@@ -321,6 +321,9 @@ func newList(get_list []string, byteValue []byte, rexp, order string) []string {
 	var new_list []string
 	reorder := regexp.MustCompile(rexp)
 	order_list := reorder.FindAll(byteValue, -1)
+	if len(order_list) == 0 {
+		return new_list
+	}
 	// Добавляем в список только новые строки
 	if order == "asc" {
 		newlines := 0
