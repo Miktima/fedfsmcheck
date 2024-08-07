@@ -329,7 +329,7 @@ func newList(get_list []string, byteValue []byte, rexp, order string) []string {
 		newlines := 0
 		for _, v := range get_list {
 			if newlines == 1 {
-				new_list = append(new_list, v)
+				new_list = append(new_list, "<li style=\"background-color:#ffff99\">"+v+"</li>")
 			}
 			if bytes.Contains([]byte(v), order_list[len(order_list)-1]) {
 				newlines = 1
@@ -342,7 +342,7 @@ func newList(get_list []string, byteValue []byte, rexp, order string) []string {
 				newlines = 0
 			}
 			if newlines == 1 {
-				new_list = append(new_list, v)
+				new_list = append(new_list, "<li style=\"background-color:#ffff99\">"+v+"</li>")
 			}
 		}
 	}
@@ -424,7 +424,7 @@ func mail(newlist []string, listName, urlList string, addressList []string) {
 	htmlhead += "<a href=\"" + urlList + "\">" + titleLink + "</a><br><br><br><div><ul>"
 	headers := []byte(subject + address + "Content-Type: text/html\nMIME-Version: 1.0\n\n" + htmlhead)
 	htmlfooter := []byte("</ul></div></body></html>")
-	combined_string := []byte(strings.Join(newlist, "<br>"))
+	combined_string := []byte(strings.Join(newlist, "\n"))
 	headers = append(headers, combined_string...)
 	msg := append(headers, htmlfooter...)
 	sendmail := exec.Command("/usr/sbin/sendmail", "-t")
