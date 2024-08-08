@@ -369,6 +369,7 @@ func mail(newlist []string, listName, urlList string, addressList []string) {
 	} else if listName == "Mintrans" {
 		subject = "Subject: Министерство транспорта Российской Федерации\n"
 	}
+	adfrom := "From: robot@ria.ru\n"
 	address := "To: "
 	n_address := 0
 	for _, a := range addressList {
@@ -422,9 +423,15 @@ func mail(newlist []string, listName, urlList string, addressList []string) {
 		titleLink = "Новости"
 	}
 	htmlhead += "<a href=\"" + urlList + "\">" + titleLink + "</a><br><br><br><div><ul>"
-	headers := []byte(subject + address + "Content-Type: text/html\nMIME-Version: 1.0\n\n" + htmlhead)
+	headers := []byte(subject + adfrom + address + "Content-Type: text/html\nMIME-Version: 1.0\n\n" + htmlhead)
 	htmlfooter := []byte("</ul></div></body></html>")
-	combined_string := []byte(strings.Join(newlist, "\n"))
+
+	var combined_string []byte
+	if strings.Contains(listName, "UL") || strings.Contains(listName, "FL") {
+		combined_string = []byte(strings.Join(newlist, "<br>"))
+	} else {
+		combined_string = []byte(strings.Join(newlist, "\n"))
+	}
 	headers = append(headers, combined_string...)
 	msg := append(headers, htmlfooter...)
 	sendmail := exec.Command("/usr/sbin/sendmail", "-t")
