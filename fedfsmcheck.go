@@ -524,6 +524,7 @@ func main() {
 			combined_string := []byte(strings.Join(get_list, ""))
 			if !testEq(byteValue_list, combined_string) {
 				err := os.WriteFile(path+"/file_"+keystr+".txt", combined_string, 0666)
+				fmt.Println("Update from URL: ", el.Url)
 				if err != nil {
 					fmt.Println("Error : ", err)
 				}
