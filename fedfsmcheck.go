@@ -452,6 +452,69 @@ func mail(newlist []string, listName, urlList string, addressList []string) {
 
 }
 
+func telega(newlist []string, listName, urlList, apikey string, chatList []string) {
+	var title string
+	var titleLink string
+	var tghead string
+
+	if strings.Contains(listName, "UL") {
+		title = "New list Federal Financial Monitoring Service: Юридические лица "
+	} else if strings.Contains(listName, "FL") {
+		title = "New list Federal Financial Monitoring Service: Физические лица "
+	} else if listName == "Spimex" {
+		title = "Биржевая информация: статистические материалы"
+	} else if listName == "Acra" {
+		title = "АКРА рейтинг"
+	} else if listName == "Mintrans" {
+		title = "Министерство транспорта Российской Федерации"
+	}
+
+	if (strings.Contains(listName, "UL") || strings.Contains(listName, "FL")) && strings.Contains(listName, "add") {
+		title += "(включённые)"
+	} else if (strings.Contains(listName, "UL") || strings.Contains(listName, "FL")) && strings.Contains(listName, "del") {
+		title += "(исключённые)"
+	}
+
+	if strings.Contains(listName, "add") {
+		titleLink = "Перечень террористов и экстремистов (включённые)"
+	} else if strings.Contains(listName, "del") {
+		titleLink = "Перечень террористов и экстремистов (исключённые)"
+	} else if listName == "Minjust" {
+		titleLink = "Перечень нежелательных организаций"
+	} else if listName == "Spimex" {
+		titleLink = "Биржевая информация: статистические материалы"
+	} else if listName == "Acra" {
+		titleLink = "Пресс-релизы"
+	} else if listName == "Mintrans" {
+		titleLink = "Новости"
+	}
+	tghead = "<b>" + title + "</b>\n\n"
+	tghead += "<a href=\"" + urlList + "\">" + titleLink + "</a>\n\n"
+
+	body := []byte(tghead)
+
+	var combined_string []byte
+	combined_string = []byte(strings.Join(newlist, "\n"))
+
+	body = append(body, combined_string...)
+
+	http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		fmt.Printf("Cannot create new request  %s, error: %v\n", url, err)
+		return nil, Scode, err
+	}
+
+	// Отправляем запрос
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Printf("Error with GET request: %v\n", err)
+		return nil, Scode, err
+	}
+
+}
+
 func main() {
 	var userAgent string
 
@@ -471,7 +534,13 @@ func main() {
 		Url    string
 	}
 
+	type Configtg struct {
+		APIkey string
+		chats  []string
+	}
+
 	var configlist []Configlist
+	var configtg Configtg
 	// Читаем файл с адресами
 	if _, err := os.Stat(path + "/emails.json"); err == nil {
 		// Open our jsonFile
@@ -483,6 +552,22 @@ func main() {
 		// defer the closing of our jsonFile so that we can parse it later on
 		// var listHash []ArticleH
 		err = json.Unmarshal(byteValue, &configlist)
+		if err != nil {
+			fmt.Println(err)
+		}
+	}
+
+	// Читаем файл с настройками telegram
+	if _, err := os.Stat(path + "/botkey.json"); err == nil {
+		// Open our jsonFile
+		byteValue, err := os.ReadFile(path + "/botkey.json")
+		// if we os.ReadFile returns an error then handle it
+		if err != nil {
+			fmt.Println(err)
+		}
+		// defer the closing of our jsonFile so that we can parse it later on
+		// var listHash []ArticleH
+		err = json.Unmarshal(byteValue, &configtg)
 		if err != nil {
 			fmt.Println(err)
 		}
@@ -536,10 +621,12 @@ func main() {
 						new_list := newList(get_list, byteValue_list, `[0-9]+ № [\d]+-[[\p{Cyrillic} ]+[\d.]+`, "asc")
 						if len(new_list) > 0 {
 							mail(new_list, el.List, el.Url, el.Emails)
+							telega(new_list, el.List, el.Url, configtg.APIkey, configtg.chats)
 						}
 					} else {
 						if len(get_list) > 0 {
 							mail(get_list, el.List, el.Url, el.Emails)
+							telega(get_list, el.List, el.Url, configtg.APIkey, configtg.chats)
 						}
 					}
 				} else if el.List == "Spimex" {
@@ -547,10 +634,12 @@ func main() {
 						new_list := newList(get_list, byteValue_list, `^[0-9]{2} \p{Cyrillic}{3} .{1} [0-9]{2}`, "desc")
 						if len(new_list) > 0 {
 							mail(new_list, el.List, el.Url, el.Emails)
+							telega(new_list, el.List, el.Url, configtg.APIkey, configtg.chats)
 						}
 					} else {
 						if len(get_list) > 0 {
 							mail(get_list, el.List, el.Url, el.Emails)
+							telega(get_list, el.List, el.Url, configtg.APIkey, configtg.chats)
 						}
 					}
 				} else if el.List == "Acra" {
@@ -558,10 +647,12 @@ func main() {
 						new_list := newList(get_list, byteValue_list, `.*?\d{1,2} \p{Cyrillic}{3} \d{4}`, "desc")
 						if len(new_list) > 0 {
 							mail(new_list, el.List, el.Url, el.Emails)
+							telega(new_list, el.List, el.Url, configtg.APIkey, configtg.chats)
 						}
 					} else {
 						if len(get_list) > 0 {
 							mail(get_list, el.List, el.Url, el.Emails)
+							telega(get_list, el.List, el.Url, configtg.APIkey, configtg.chats)
 						}
 					}
 				} else if el.List == "Mintrans" {
@@ -572,6 +663,7 @@ func main() {
 						}
 						if len(new_list) > 0 {
 							mail(new_list, el.List, el.Url, el.Emails)
+							telega(new_list, el.List, el.Url, configtg.APIkey, configtg.chats)
 						}
 					} else {
 						for i := 0; i < len(get_list); i++ {
@@ -579,6 +671,7 @@ func main() {
 						}
 						if len(get_list) > 0 {
 							mail(get_list, el.List, el.Url, el.Emails)
+							telega(get_list, el.List, el.Url, configtg.APIkey, configtg.chats)
 						}
 					}
 				}
