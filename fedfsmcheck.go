@@ -554,7 +554,7 @@ func main() {
 					}
 				} else if el.List == "Acra" {
 					if len(byteValue_list) > 0 {
-						new_list := newList(get_list, byteValue_list, `.*?\d{2} \p{Cyrillic}{3} \d{4}`, "desc")
+						new_list := newList(get_list, byteValue_list, `.*?\d{1,2} \p{Cyrillic}{3} \d{4}`, "desc")
 						if len(new_list) > 0 {
 							mail(new_list, el.List, el.Url, el.Emails)
 						}
