@@ -397,7 +397,7 @@ func mail(newlist []string, listName, urlList string, addressList []string) {
 	if strings.Contains(listName, "add") {
 		title += " (включенные)"
 		htmlhead += "</head><body><h1>" + title + "</h1>"
-	} else if strings.Contains(listName, "FL") {
+	} else if strings.Contains(listName, "del") {
 		title += " (исключённые)"
 		htmlhead += "</head><body><h1>" + title + "</h1>"
 	} else if listName == "Minjust" {
