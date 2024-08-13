@@ -492,13 +492,13 @@ func telega(newlist []string, listName, urlList, apikey string, chatList []strin
 	tgbody = "*" + title + "*\n\n"
 	tgbody += "[" + titleLink + "](" + urlList + ")\n\n"
 
-	re := regexp.MustCompile(`<.*?>`)
+	reli := regexp.MustCompile(`<.*?>`)
+
 	for _, v := range newlist {
-		v = re.ReplaceAllString(v, "")
+		v = reli.ReplaceAllString(v, "")
 		listbulk += "\\> " + v + "\n"
 	}
 	tgbody += listbulk
-	fmt.Println(tgbody)
 
 	http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 
