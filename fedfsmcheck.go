@@ -369,7 +369,7 @@ func mail(newlist []string, listName, urlList string, addressList []string) {
 	} else if listName == "Mintrans" {
 		subject = "Subject: Министерство транспорта Российской Федерации\n"
 	}
-	adfrom := "From: robot@ria.ru\n"
+	adfrom := "From: robot@ria.ru\nReply-To: robot@ria.ru\n"
 	address := "To: "
 	n_address := 0
 	for _, a := range addressList {
