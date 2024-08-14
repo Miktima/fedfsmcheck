@@ -642,6 +642,7 @@ func main() {
 				// Для определенных сайтов отправляем только новые строки
 				if el.List == "ULadd" || el.List == "ULdel" || el.List == "FLadd" || el.List == "FLdel" {
 					mail(get_list, el.List, el.Url, el.Emails)
+					telega(get_list, el.List, el.Url, configtg.APIkey, el.Chats)
 				} else if el.List == "Minjust" {
 					if len(byteValue_list) > 0 {
 						new_list := newList(get_list, byteValue_list, `[0-9]+ № [\d]+-[[\p{Cyrillic} ]+[\d.]+`, "asc")
