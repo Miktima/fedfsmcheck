@@ -493,7 +493,7 @@ func telega(newlist []string, listName, urlList, apikey string, chatList []strin
 	tgbody += "[" + titleLink + "](" + urlList + ")\n\n"
 
 	reli := regexp.MustCompile(`<.*?>`)
-	resmb := regexp.MustCompile(`([_*\[\]()~>#+-=|{}.!])`)
+	resmb := regexp.MustCompile(`([_\*\[\]\(\)~\>\#\+\-\=\|\{\}\.!])`)
 
 	for _, v := range newlist {
 		v = reli.ReplaceAllString(v, "")
