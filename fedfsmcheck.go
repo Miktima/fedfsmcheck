@@ -471,21 +471,21 @@ func telega(newlist []string, listName, urlList, apikey string, chatList []strin
 	}
 
 	if (strings.Contains(listName, "UL") || strings.Contains(listName, "FL")) && strings.Contains(listName, "add") {
-		title += "(включённые)"
+		title += "\\(включённые\\)"
 	} else if (strings.Contains(listName, "UL") || strings.Contains(listName, "FL")) && strings.Contains(listName, "del") {
-		title += "(исключённые)"
+		title += "\\(исключённые\\)"
 	}
 
 	if strings.Contains(listName, "add") {
-		titleLink = "Перечень террористов и экстремистов (включённые)"
+		titleLink = "Перечень террористов и экстремистов \\(включённые\\)"
 	} else if strings.Contains(listName, "del") {
-		titleLink = "Перечень террористов и экстремистов (исключённые)"
+		titleLink = "Перечень террористов и экстремистов \\(исключённые\\)"
 	} else if listName == "Minjust" {
 		titleLink = "Перечень нежелательных организаций"
 	} else if listName == "Spimex" {
 		titleLink = "Биржевая информация: статистические материалы"
 	} else if listName == "Acra" {
-		titleLink = "Пресс-релизы"
+		titleLink = "Пресс\\-релизы"
 	} else if listName == "Mintrans" {
 		titleLink = "Новости"
 	}
@@ -493,9 +493,11 @@ func telega(newlist []string, listName, urlList, apikey string, chatList []strin
 	tgbody += "[" + titleLink + "](" + urlList + ")\n\n"
 
 	reli := regexp.MustCompile(`<.*?>`)
+	resmb := regexp.MustCompile(`([_*\[\]()~>#+-=|{}.!])`)
 
 	for _, v := range newlist {
 		v = reli.ReplaceAllString(v, "")
+		v = resmb.ReplaceAllString(v, "\\$1")
 		listbulk += "\\> " + v + "\n"
 	}
 	tgbody += listbulk
@@ -507,30 +509,35 @@ func telega(newlist []string, listName, urlList, apikey string, chatList []strin
 
 	url := "https://api.telegram.org/bot" + apikey + "/sendMessage"
 
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		fmt.Printf("Cannot create new request  %s, error: %v\n", url, err)
+	for _, tgid := range chatList {
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			fmt.Printf("Cannot create new request  %s, error: %v\n", url, err)
+		}
+
+		q := req.URL.Query()
+		q.Add("parse_mode", "MarkdownV2")
+		q.Add("chat_id", tgid)
+		q.Add("disable_web_page_preview", "1")
+		q.Add("text", tgbody)
+
+		req.URL.RawQuery = q.Encode()
+
+		// Отправляем запрос
+		resp, err := client.Do(req)
+		if err != nil {
+			fmt.Printf("Error with GET request: %v\n", err)
+		}
+		if resp.StatusCode > 299 {
+			fmt.Println("Message with was not sent")
+			fmt.Println("Title: ", title)
+			fmt.Println("Title Link: ", titleLink)
+			fmt.Println("URL link: ", urlList)
+			fmt.Println("Listbulk:", listbulk)
+		}
+
+		defer resp.Body.Close()
 	}
-
-	q := req.URL.Query()
-	q.Add("parse_mode", "MarkdownV2")
-	q.Add("chat_id", chatList[0]) // !!! loop by chats
-	q.Add("disable_web_page_preview", "1")
-	q.Add("text", tgbody)
-
-	req.URL.RawQuery = q.Encode()
-
-	fmt.Println(req.URL.String())
-
-	// Отправляем запрос
-	resp, err := client.Do(req)
-	if err != nil {
-		fmt.Printf("Error with GET request: %v\n", err)
-	}
-	fmt.Println(resp.StatusCode)
-	fmt.Println(resp.Body)
-
-	defer resp.Body.Close()
 
 }
 
@@ -550,12 +557,12 @@ func main() {
 	type Configlist struct {
 		List   string
 		Emails []string
+		Chats  []string
 		Url    string
 	}
 
 	type Configtg struct {
 		APIkey string
-		Chats  []string
 	}
 
 	var configlist []Configlist
@@ -640,12 +647,12 @@ func main() {
 						new_list := newList(get_list, byteValue_list, `[0-9]+ № [\d]+-[[\p{Cyrillic} ]+[\d.]+`, "asc")
 						if len(new_list) > 0 {
 							mail(new_list, el.List, el.Url, el.Emails)
-							telega(new_list, el.List, el.Url, configtg.APIkey, configtg.Chats)
+							telega(new_list, el.List, el.Url, configtg.APIkey, el.Chats)
 						}
 					} else {
 						if len(get_list) > 0 {
 							mail(get_list, el.List, el.Url, el.Emails)
-							telega(get_list, el.List, el.Url, configtg.APIkey, configtg.Chats)
+							telega(get_list, el.List, el.Url, configtg.APIkey, el.Chats)
 						}
 					}
 				} else if el.List == "Spimex" {
@@ -653,12 +660,12 @@ func main() {
 						new_list := newList(get_list, byteValue_list, `^[0-9]{2} \p{Cyrillic}{3} .{1} [0-9]{2}`, "desc")
 						if len(new_list) > 0 {
 							mail(new_list, el.List, el.Url, el.Emails)
-							telega(new_list, el.List, el.Url, configtg.APIkey, configtg.Chats)
+							telega(new_list, el.List, el.Url, configtg.APIkey, el.Chats)
 						}
 					} else {
 						if len(get_list) > 0 {
 							mail(get_list, el.List, el.Url, el.Emails)
-							telega(get_list, el.List, el.Url, configtg.APIkey, configtg.Chats)
+							telega(get_list, el.List, el.Url, configtg.APIkey, el.Chats)
 						}
 					}
 				} else if el.List == "Acra" {
@@ -666,12 +673,12 @@ func main() {
 						new_list := newList(get_list, byteValue_list, `.*?\d{1,2} \p{Cyrillic}{3} \d{4}`, "desc")
 						if len(new_list) > 0 {
 							mail(new_list, el.List, el.Url, el.Emails)
-							telega(new_list, el.List, el.Url, configtg.APIkey, configtg.Chats)
+							telega(new_list, el.List, el.Url, configtg.APIkey, el.Chats)
 						}
 					} else {
 						if len(get_list) > 0 {
 							mail(get_list, el.List, el.Url, el.Emails)
-							telega(get_list, el.List, el.Url, configtg.APIkey, configtg.Chats)
+							telega(get_list, el.List, el.Url, configtg.APIkey, el.Chats)
 						}
 					}
 				} else if el.List == "Mintrans" {
@@ -682,7 +689,7 @@ func main() {
 						}
 						if len(new_list) > 0 {
 							mail(new_list, el.List, el.Url, el.Emails)
-							telega(new_list, el.List, el.Url, configtg.APIkey, configtg.Chats)
+							telega(new_list, el.List, el.Url, configtg.APIkey, el.Chats)
 						}
 					} else {
 						for i := 0; i < len(get_list); i++ {
@@ -690,7 +697,7 @@ func main() {
 						}
 						if len(get_list) > 0 {
 							mail(get_list, el.List, el.Url, el.Emails)
-							telega(get_list, el.List, el.Url, configtg.APIkey, configtg.Chats)
+							telega(get_list, el.List, el.Url, configtg.APIkey, el.Chats)
 						}
 					}
 				}
