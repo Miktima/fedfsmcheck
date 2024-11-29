@@ -457,6 +457,9 @@ func telega(newlist []string, listName, urlList, apikey string, chatList []strin
 	var titleLink string
 	var tgbody string
 	var listbulk string
+	var niter int
+
+	const MAX_TG_SIZE = 4096
 
 	if strings.Contains(listName, "UL") {
 		title = "New list Federal Financial Monitoring Service: Юридические лица "
@@ -501,6 +504,8 @@ func telega(newlist []string, listName, urlList, apikey string, chatList []strin
 		listbulk += "\\> " + v + "\n"
 	}
 	tgbody += listbulk
+	// Проверяем, что тело сообщения не превышает предельный размер
+	niter = len(tgbody) / MAX_TG_SIZE
 
 	http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 
@@ -509,36 +514,94 @@ func telega(newlist []string, listName, urlList, apikey string, chatList []strin
 
 	url := "https://api.telegram.org/bot" + apikey + "/sendMessage"
 
-	for _, tgid := range chatList {
-		req, err := http.NewRequest("GET", url, nil)
-		if err != nil {
-			fmt.Printf("Cannot create new request  %s, error: %v\n", url, err)
+	// Если тело сообщения не превышает предельный размер, то отсылаем сообщение как обычно
+	if niter == 0 {
+		for _, tgid := range chatList {
+			req, err := http.NewRequest("GET", url, nil)
+			if err != nil {
+				fmt.Printf("Cannot create new request  %s, error: %v\n", url, err)
+			}
+
+			q := req.URL.Query()
+			q.Add("parse_mode", "MarkdownV2")
+			q.Add("chat_id", tgid)
+			q.Add("disable_web_page_preview", "1")
+			q.Add("text", tgbody)
+
+			req.URL.RawQuery = q.Encode()
+
+			// Отправляем запрос
+			resp, err := client.Do(req)
+			if err != nil {
+				fmt.Printf("Error with GET request: %v\n", err)
+			}
+			if resp.StatusCode > 299 {
+				fmt.Println("Message with was not sent")
+				fmt.Println("Title: ", title)
+				fmt.Println("Title Link: ", titleLink)
+				fmt.Println("URL link: ", urlList)
+				fmt.Println("Listbulk:", listbulk)
+			}
+
+			defer resp.Body.Close()
 		}
-
-		q := req.URL.Query()
-		q.Add("parse_mode", "MarkdownV2")
-		q.Add("chat_id", tgid)
-		q.Add("disable_web_page_preview", "1")
-		q.Add("text", tgbody)
-
-		req.URL.RawQuery = q.Encode()
-
-		// Отправляем запрос
-		resp, err := client.Do(req)
-		if err != nil {
-			fmt.Printf("Error with GET request: %v\n", err)
+		listbulk = ""
+	} else {
+		// Если тело сообщения превышает предельный размер, то делим сообщение на чанки
+		var divided [][]string
+		chunkSize := len(newlist) / (niter + 1)
+		for i := 0; i < len(newlist); i += chunkSize {
+			end := i + chunkSize
+			if end > len(newlist) {
+				end = len(newlist)
+			}
+			divided = append(divided, newlist[i:end])
 		}
-		if resp.StatusCode > 299 {
-			fmt.Println("Message with was not sent")
-			fmt.Println("Title: ", title)
-			fmt.Println("Title Link: ", titleLink)
-			fmt.Println("URL link: ", urlList)
-			fmt.Println("Listbulk:", listbulk)
-		}
+		k := 0
+		for _, dv := range divided {
+			listbulk = ""
+			if k == 0 {
+				tgbody = "*" + title + "*\n\n"
+				tgbody += "[" + titleLink + "](" + urlList + ")\n\n"
+			} else {
+				tgbody = "*" + title + " \\(Продолжение\\) *\n\n"
+			}
+			for _, vc := range dv {
+				vc = reli.ReplaceAllString(vc, "")
+				vc = resmb.ReplaceAllString(vc, "\\$1")
+				listbulk += "\\> " + vc + "\n"
+			}
+			tgbody += listbulk
+			for _, tgid := range chatList {
+				req, err := http.NewRequest("GET", url, nil)
+				if err != nil {
+					fmt.Printf("Cannot create new request  %s, error: %v\n", url, err)
+				}
 
-		defer resp.Body.Close()
+				q := req.URL.Query()
+				q.Add("parse_mode", "MarkdownV2")
+				q.Add("chat_id", tgid)
+				q.Add("disable_web_page_preview", "1")
+				q.Add("text", tgbody)
+
+				req.URL.RawQuery = q.Encode()
+
+				// Отправляем запрос
+				resp, err := client.Do(req)
+				if err != nil {
+					fmt.Printf("Error with GET request: %v\n", err)
+				}
+				if resp.StatusCode > 299 {
+					fmt.Println("Message with was not sent")
+					fmt.Println("Chunk:", k)
+					fmt.Println("tgbody:", tgbody)
+					fmt.Println("resp.StatusCode:", resp.StatusCode)
+				}
+				defer resp.Body.Close()
+				k++
+			}
+		}
 	}
-
 }
 
 func main() {
@@ -615,6 +678,7 @@ func main() {
 		body, statuscode, err := getHtmlPage(el.Url, userAgent)
 		if err != nil || statuscode != 200 {
 			fmt.Printf("Error getHtmlPage - %v\n", err)
+			fmt.Printf("URL - %s\n", el.Url)
 			fmt.Printf("Status Code - %d\n", statuscode)
 		} else {
 			// Получаем список
