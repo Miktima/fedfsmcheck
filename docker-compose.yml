@@ -1,0 +1,7 @@
+services:
+  fedfsmcheck:
+    build: .
+    container_name: fedfsmcheck
+    restart: always
+    volumes:
+    - ./data:/build/data

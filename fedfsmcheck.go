@@ -11,9 +11,9 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
-	"strconv"
 	"strings"
 
+	"github.com/go-co-op/gocron/v2"
 	"golang.org/x/net/html"
 )
 
@@ -471,6 +471,8 @@ func telega(newlist []string, listName, urlList, apikey string, chatList []strin
 		title = "АКРА рейтинг"
 	} else if listName == "Mintrans" {
 		title = "Министерство транспорта Российской Федерации"
+	} else if listName == "Test" {
+		title = "Test message"
 	}
 
 	if (strings.Contains(listName, "UL") || strings.Contains(listName, "FL")) && strings.Contains(listName, "add") {
@@ -493,7 +495,9 @@ func telega(newlist []string, listName, urlList, apikey string, chatList []strin
 		titleLink = "Новости"
 	}
 	tgbody = "*" + title + "*\n\n"
-	tgbody += "[" + titleLink + "](" + urlList + ")\n\n"
+	if listName != "Test" {
+		tgbody += "[" + titleLink + "](" + urlList + ")\n\n"
+	}
 
 	reli := regexp.MustCompile(`<.*?>`)
 	resmb := regexp.MustCompile(`([_\*\[\]\(\)~\>\#\+\-\=\|\{\}\.!])`)
@@ -608,17 +612,19 @@ func main() {
 	var userAgent string
 
 	// Ключи для командной строки
-	flag.StringVar(&userAgent, "uagent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit", "User Agent")
+	flag.StringVar(&userAgent, "uagent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36", "User Agent")
 
 	flag.Parse()
 
-	path, _ := os.Executable()
-	path = path[:strings.LastIndex(path, "/")+1]
+	//path, _ := os.Executable()
+	//path = path[:strings.LastIndex(path, "/")+1]
+	path := "/build"
 
 	var byteValue_list []byte
 
 	type Configlist struct {
 		List   string
+		Cron   string
 		Emails []string
 		Chats  []string
 		Url    string
@@ -662,111 +668,154 @@ func main() {
 		}
 	}
 
+	// Инициируем расписание
+	s, _ := gocron.NewScheduler()
+	defer func() { _ = s.Shutdown() }()
+
 	// Читаем файлы со списками. Файлы в порядке, указанном в конфигурационном файле
-	for key, el := range configlist {
-		keystr := strconv.Itoa(key)
-		byteValue_list = []byte{}
-		if _, err := os.Stat(path + "/file_" + keystr + ".txt"); err == nil {
-			// Open our jsonFile
-			byteValue_list, err = os.ReadFile(path + "/file_" + keystr + ".txt")
-			// if we os.ReadFile returns an error then handle it
+	for _, el := range configlist {
+		if el.List == "Test" {
+			j, err := s.NewJob(
+				gocron.CronJob(
+					// standard cron tab parsing
+					el.Cron,
+					false,
+				),
+				gocron.NewTask(
+					func() {
+						telega([]string{"OK"}, el.List, el.Url, configtg.APIkey, el.Chats)
+					},
+				),
+			)
 			if err != nil {
 				fmt.Println(err)
+			} else {
+				fmt.Printf("Job ID %s for resource: %s\n", j.ID().String(), el.Url)
 			}
-		}
-
-		body, statuscode, err := getHtmlPage(el.Url, userAgent)
-		if err != nil || statuscode != 200 {
-			fmt.Printf("Error getHtmlPage - %v\n", err)
-			fmt.Printf("URL - %s\n", el.Url)
-			fmt.Printf("Status Code - %d\n", statuscode)
 		} else {
-			// Получаем список
-			var get_list []string
-			if el.List == "ULadd" || el.List == "ULdel" {
-				get_list = getListFsm(body, "russianUL")
-			} else if el.List == "FLadd" || el.List == "FLdel" {
-				get_list = getListFsm(body, "russianFL")
-			} else if el.List == "Minjust" {
-				get_list = getListMinjust(body)
-			} else if el.List == "Spimex" {
-				get_list = getListSpimex(body)
-			} else if el.List == "Acra" {
-				get_list = getListAcra(body)
-			} else if el.List == "Mintrans" {
-				get_list = getListMintrans(body)
-			}
-			combined_string := []byte(strings.Join(get_list, ""))
-			if !testEq(byteValue_list, combined_string) {
-				err := os.WriteFile(path+"/file_"+keystr+".txt", combined_string, 0666)
-				fmt.Println("Update from URL: ", el.Url)
-				if err != nil {
-					fmt.Println("Error : ", err)
-				}
-				// Для определенных сайтов отправляем только новые строки
-				if el.List == "ULadd" || el.List == "ULdel" || el.List == "FLadd" || el.List == "FLdel" {
-					mail(get_list, el.List, el.Url, el.Emails)
-					telega(get_list, el.List, el.Url, configtg.APIkey, el.Chats)
-				} else if el.List == "Minjust" {
-					if len(byteValue_list) > 0 {
-						new_list := newList(get_list, byteValue_list, `[0-9]+ № [\d]+-[[\p{Cyrillic} ]+[\d.]+`, "asc")
-						if len(new_list) > 0 {
-							mail(new_list, el.List, el.Url, el.Emails)
-							telega(new_list, el.List, el.Url, configtg.APIkey, el.Chats)
+			j, err := s.NewJob(
+				gocron.CronJob(
+					// standard cron tab parsing
+					el.Cron,
+					false,
+				),
+				gocron.NewTask(
+					func() {
+						byteValue_list = []byte{}
+						if _, err := os.Stat(path + "/data/file_" + el.List + ".txt"); err == nil {
+							// Open our jsonFile
+							byteValue_list, err = os.ReadFile(path + "/data/file_" + el.List + ".txt")
+							// if we os.ReadFile returns an error then handle it
+							if err != nil {
+								fmt.Println(err)
+							}
 						}
-					} else {
-						if len(get_list) > 0 {
-							mail(get_list, el.List, el.Url, el.Emails)
-							telega(get_list, el.List, el.Url, configtg.APIkey, el.Chats)
+
+						body, statuscode, err := getHtmlPage(el.Url, userAgent)
+						if err != nil || statuscode != 200 {
+							fmt.Printf("Error getHtmlPage - %v\n", err)
+							fmt.Printf("URL - %s\n", el.Url)
+							fmt.Printf("Status Code - %d\n", statuscode)
+						} else {
+							// Получаем список
+							var get_list []string
+							if el.List == "ULadd" || el.List == "ULdel" {
+								get_list = getListFsm(body, "russianUL")
+							} else if el.List == "FLadd" || el.List == "FLdel" {
+								get_list = getListFsm(body, "russianFL")
+							} else if el.List == "Minjust" {
+								get_list = getListMinjust(body)
+							} else if el.List == "Spimex" {
+								get_list = getListSpimex(body)
+							} else if el.List == "Acra" {
+								get_list = getListAcra(body)
+							} else if el.List == "Mintrans" {
+								get_list = getListMintrans(body)
+							}
+							combined_string := []byte(strings.Join(get_list, ""))
+							if !testEq(byteValue_list, combined_string) {
+								err := os.WriteFile(path+"/data/file_"+el.List+".txt", combined_string, 0666)
+								fmt.Println("Update from URL: ", el.Url)
+								if err != nil {
+									fmt.Println("Error : ", err)
+								}
+								// Для определенных сайтов отправляем только новые строки
+								if el.List == "ULadd" || el.List == "ULdel" || el.List == "FLadd" || el.List == "FLdel" {
+									mail(get_list, el.List, el.Url, el.Emails)
+									telega(get_list, el.List, el.Url, configtg.APIkey, el.Chats)
+								} else if el.List == "Minjust" {
+									if len(byteValue_list) > 0 {
+										new_list := newList(get_list, byteValue_list, `[0-9]+ № [\d]+-[[\p{Cyrillic} ]+[\d.]+`, "asc")
+										if len(new_list) > 0 {
+											mail(new_list, el.List, el.Url, el.Emails)
+											telega(new_list, el.List, el.Url, configtg.APIkey, el.Chats)
+										}
+									} else {
+										if len(get_list) > 0 {
+											mail(get_list, el.List, el.Url, el.Emails)
+											telega(get_list, el.List, el.Url, configtg.APIkey, el.Chats)
+										}
+									}
+								} else if el.List == "Spimex" {
+									if len(byteValue_list) > 0 {
+										new_list := newList(get_list, byteValue_list, `^[0-9]{2} \p{Cyrillic}{3} .{1} [0-9]{2}`, "desc")
+										if len(new_list) > 0 {
+											mail(new_list, el.List, el.Url, el.Emails)
+											telega(new_list, el.List, el.Url, configtg.APIkey, el.Chats)
+										}
+									} else {
+										if len(get_list) > 0 {
+											mail(get_list, el.List, el.Url, el.Emails)
+											telega(get_list, el.List, el.Url, configtg.APIkey, el.Chats)
+										}
+									}
+								} else if el.List == "Acra" {
+									if len(byteValue_list) > 0 {
+										new_list := newList(get_list, byteValue_list, `.*?\d{1,2} \p{Cyrillic}{3} \d{4}`, "desc")
+										if len(new_list) > 0 {
+											mail(new_list, el.List, el.Url, el.Emails)
+											telega(new_list, el.List, el.Url, configtg.APIkey, el.Chats)
+										}
+									} else {
+										if len(get_list) > 0 {
+											mail(get_list, el.List, el.Url, el.Emails)
+											telega(get_list, el.List, el.Url, configtg.APIkey, el.Chats)
+										}
+									}
+								} else if el.List == "Mintrans" {
+									if len(byteValue_list) > 0 {
+										new_list := newList(get_list, byteValue_list, `.*?[PAD]`, "desc")
+										for i := 0; i < len(new_list); i++ {
+											new_list[i] = strings.ReplaceAll(new_list[i], "[PAD]", "")
+										}
+										if len(new_list) > 0 {
+											mail(new_list, el.List, el.Url, el.Emails)
+											telega(new_list, el.List, el.Url, configtg.APIkey, el.Chats)
+										}
+									} else {
+										for i := 0; i < len(get_list); i++ {
+											get_list[i] = strings.ReplaceAll(get_list[i], "[PAD]", "")
+										}
+										if len(get_list) > 0 {
+											mail(get_list, el.List, el.Url, el.Emails)
+											telega(get_list, el.List, el.Url, configtg.APIkey, el.Chats)
+										}
+									}
+								}
+							}
 						}
-					}
-				} else if el.List == "Spimex" {
-					if len(byteValue_list) > 0 {
-						new_list := newList(get_list, byteValue_list, `^[0-9]{2} \p{Cyrillic}{3} .{1} [0-9]{2}`, "desc")
-						if len(new_list) > 0 {
-							mail(new_list, el.List, el.Url, el.Emails)
-							telega(new_list, el.List, el.Url, configtg.APIkey, el.Chats)
-						}
-					} else {
-						if len(get_list) > 0 {
-							mail(get_list, el.List, el.Url, el.Emails)
-							telega(get_list, el.List, el.Url, configtg.APIkey, el.Chats)
-						}
-					}
-				} else if el.List == "Acra" {
-					if len(byteValue_list) > 0 {
-						new_list := newList(get_list, byteValue_list, `.*?\d{1,2} \p{Cyrillic}{3} \d{4}`, "desc")
-						if len(new_list) > 0 {
-							mail(new_list, el.List, el.Url, el.Emails)
-							telega(new_list, el.List, el.Url, configtg.APIkey, el.Chats)
-						}
-					} else {
-						if len(get_list) > 0 {
-							mail(get_list, el.List, el.Url, el.Emails)
-							telega(get_list, el.List, el.Url, configtg.APIkey, el.Chats)
-						}
-					}
-				} else if el.List == "Mintrans" {
-					if len(byteValue_list) > 0 {
-						new_list := newList(get_list, byteValue_list, `.*?[PAD]`, "desc")
-						for i := 0; i < len(new_list); i++ {
-							new_list[i] = strings.ReplaceAll(new_list[i], "[PAD]", "")
-						}
-						if len(new_list) > 0 {
-							mail(new_list, el.List, el.Url, el.Emails)
-							telega(new_list, el.List, el.Url, configtg.APIkey, el.Chats)
-						}
-					} else {
-						for i := 0; i < len(get_list); i++ {
-							get_list[i] = strings.ReplaceAll(get_list[i], "[PAD]", "")
-						}
-						if len(get_list) > 0 {
-							mail(get_list, el.List, el.Url, el.Emails)
-							telega(get_list, el.List, el.Url, configtg.APIkey, el.Chats)
-						}
-					}
-				}
+					},
+				),
+			)
+			if err != nil {
+				fmt.Println(err)
+			} else {
+				fmt.Printf("Job ID %s for resource: %s\n", j.ID().String(), el.Url)
 			}
 		}
 	}
+	// start the scheduler
+	s.Start()
+
+	select {} // wait forever
 }
