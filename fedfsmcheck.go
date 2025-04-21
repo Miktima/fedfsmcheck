@@ -620,7 +620,7 @@ func main() {
 	//path = path[:strings.LastIndex(path, "/")+1]
 	path := "/build"
 
-	var byteValue_list []byte
+	// var byteValue_list []byte
 
 	type Configlist struct {
 		List   string
@@ -701,7 +701,7 @@ func main() {
 				),
 				gocron.NewTask(
 					func() {
-						byteValue_list = []byte{}
+						byteValue_list := []byte{}
 						if _, err := os.Stat(path + "/data/file_" + el.List + ".txt"); err == nil {
 							// Open our jsonFile
 							byteValue_list, err = os.ReadFile(path + "/data/file_" + el.List + ".txt")
