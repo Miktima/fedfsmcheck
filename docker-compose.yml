@@ -2,6 +2,9 @@ services:
   fedfsmcheck:
     build: .
     container_name: fedfsmcheck
+    network_mode: host
     restart: always
     volumes:
     - ./data:/build/data
+    - /var/spool/postfix/:/var/spool/postfix/
+    - /etc/postfix/:/etc/postfix/
